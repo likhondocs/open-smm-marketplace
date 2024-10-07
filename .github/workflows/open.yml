@@ -1,0 +1,58 @@
+name: Weekly Fork Count and Dependency Updates
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Runs every Sunday at midnight
+  workflow_dispatch:
+
+jobs:
+  count-forks:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Create and switch to update branch
+      run: |
+        git checkout -b auto-updates-$(date +%Y-%m-%d)
+
+    - name: Fetch repository data
+      id: repo
+      uses: octokit/request-action@v2.x
+      with:
+        route: GET /repos/${{ github.repository }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Write fork count to text file
+      run: echo "Total Forks: ${{ fromJson(steps.repo.outputs.data).forks_count }}" > fork-count.txt
+
+    - name: Run Dependabot
+      uses: dependabot/dependabot-core@v3
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        directory: "/"
+        package-manager: "npm"  # Replace with your project's ecosystem
+
+    - name: Commit changes
+      run: |
+        git config user.name 'GitHub Actions Bot'
+        git config user.email 'actions@github.com'
+        git add fork-count.txt
+        git add .
+        git commit -m "Weekly update of fork count and dependencies" || echo "No changes to commit"
+
+    - name: Push changes
+      run: |
+        git push origin auto-updates-$(date +%Y-%m-%d)
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        title: 'Weekly Updates: Fork Count and Dependencies'
+        body: 'This PR updates the fork count and runs Dependabot updates.'
+        branch: auto-updates-$(date +%Y-%m-%d)
+        base: main
